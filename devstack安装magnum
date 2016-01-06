@@ -1,0 +1,120 @@
+1 下载devstack代码
+
+git clone https://git.openstack.org/openstack-dev/devstack /opt/stack/devstack
+
+公司内部不支持git协议，需将git修改为http
+
+配置local.conf 样例如下
+SERVICE_TOKEN=azertytoken
+ADMIN_PASSWORD=nomoresecrete
+DATABASE_PASSWORD=stackdb
+RABBIT_PASSWORD=stackqueue
+SERVICE_PASSWORD=$ADMIN_PASSWORD
+
+Q_USE_SECGROUP=True
+FLOATING_RANGE=”186.100.40.0/24″
+FIXED_RANGE=”10.0.0.0/24″
+Q_FLOATING_ALLOCATION_POOL=start=186.100.40.200,end=186.100.40.254
+PUBLIC_NETWORK_GATEWAY=”186.100.40.1″
+Q_L3_ENABLED=True
+PUBLIC_INTERFACE=p49p2
+Q_USE_PROVIDERNET_FOR_PUBLIC=True
+OVS_PHYSICAL_BRIDGE=br-ex
+PUBLIC_BRIDGE=br-ex
+OVS_BRIDGE_MAPPINGS=public:br-ex
+
+enable_plugin magnum http://git.openstack.org/openstack/magnum
+enable_plugin barbican http://git.openstack.org/openstack/barbican
+VOLUME_BACKING_FILE_SIZE=20G
+enable_plugin ceilometer http://git.openstack.org/openstack/ceilometer
+HOST_IP=186.100.40.118
+LOGFILE=$DEST/logs/stack.sh.log
+LOGDAYS=2
+SWIFT_HASH=66a3d6b56c1f479c8b4e70ab5c2000f5
+SWIFT_REPLICAS=1
+SWIFT_DATA_DIR=$DEST/data
+enable_service tempest
+
+由于Devstack脚本已经不支持直接使用root身份运行，因而需要创建stack用户
+
+cd tools/
+sudo ./create-stack-user.sh
+
+修改devstack目录权限,让stack用户可以运行
+
+sudo chown -R stack:stack ../devstack
+
+开始安装，这一步比较耗时，如果网络不好的话，有可能安装会中断，重新执行stack.sh继续安装即可
+(网络不好的话，可以把pip安装的超时时间设置的时间长一点)
+sudo su stack
+./stack.sh
+
+2 安装完成之后执行 source openrc admin admin
+就可以执行相关命令查看相关服务是否正常 (cinder-list nova-list等)
+
+3 安装完成后，查看magnum是否正常
+magnum service-list
+
++—-+————————————+——————+——-+
+| id | host | binary | state |
++—-+————————————+——————+——-+
+| 1 | localhost | magnum-conductor | up |
++—-+————————————+——————+——-+
+
+4 创建keypair
+test -f ~/.ssh/id_rsa.pub || ssh-keygen -t rsa -N “” -f ~/.ssh/id_rsa
+nova keypair-add –pub-key ~/.ssh/id_rsa.pub testkey
+
+5 使用magnum创建swarm baymodel,由于在内网中创建，需要配置proxy,创建命令如下
+
+magnum baymodel-create –name swarmbaymodel \
+–image-id fedora-21-atomic-5 \
+–keypair-id testkey \
+–http-proxy http://186.100.4.131:808 \
+–https-proxy http://186.100.4.131:808 \
+–no-proxy 186.100.40.118 \
+–external-network-id public \
+–dns-nameserver 8.8.8.8 \
+–flavor-id m1.small \
+–coe swarm
+
+6 创建bay
+magnum bay-create –name swarmbay –baymodel swarmbaymodel –node-count 2
+7 创建后执行 magnum bay-list显示
+root@ubuntu:/home/devstack/devstack# magnum bay-list
++————————————–+———-+————+————–+—————–+
+| uuid | name | node_count | master_count | status |
++————————————–+———-+————+————–+—————–+
+| a3dd574e-04dc-4c87-b554-5b4bcea4fee5 | swarmbay | 2 | 1 | CREATE_COMPLETE |
++————————————–+———-+————+————–+—————–+
+
+8 在bay中创建container
+magnum container-create –name test-container \
+–image docker.io/busybox:latest \
+–bay swarmbay \
+–command “ping -c 4 8.8.8.8″
+
+9 创建完成continer后，执行 container-start, container-logs,container-delete命令启动容器，查看容器日志，删除容器
+
+10 magnum bay创建完成后，会在本机上启动对应的虚拟机，通过virsh list查看虚拟机启动状态
+root@ubuntu:/home/devstack/devstack# virsh list
+
+Id Name State
+13 instance-0000000c running
+14 instance-0000000d running
+15 instance-0000000e running
+
+11 执行nova list查看分配给各个虚拟机的ip, 默认的是启动的fedora镜像
+root@ubuntu:/home/devstack/devstack# nova list
++————————————–+——————————————————-+——–+————+————-+—————————————————————————+
+| ID | Name | Status | Task State | Power State | Networks |
++————————————–+——————————————————-+——–+————+————-+—————————————————————————+
+| 9762b4ac-1bb3-41eb-b325-e83370090667 | sw-etpdmmr27ck-0-c5jpyc2tma3g-swarm_node-acfclcosavlp | ACTIVE | – | Running | swarmbay-ulouyise2tb5-fixed_network-fm23cab3xnv3=10.0.0.5, 186.100.40.219 |
+
+（可以通过ssh,登陆到虚拟机上,使用fedora镜像的用户fedora ssh fedora@186.100.40.219）
+
+12 登陆上之后可以执行 sudo docker ps 查看相关容器运行情况
+[fedora@swarmbay-ulouyise2tb5-swarm-master-4pa4fnbee6uk ~]$ sudo docker ps
+CONTAINER ID IMAGE COMMAND CREATED STATUS PORTS NAMES
+f74334e15782 swarm:1.0.0 “/swarm join –addr 1″ 2 hours ago Up 2 hours 2375/tcp swarm-agent
+8d274640b901 swarm:1.0.0 “/swarm manage -H tcp” 2 hours ago Up 2 hours 0.0.0.0:2376->2375/tcp swarm-manager
