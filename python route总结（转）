@@ -1,0 +1,197 @@
+route 可以从url提取相应的参数,如controller,action或者其它用户自己定义的变量
+1.Mapper().connect    Mapper().match
+
+from routes import Mapper
+map = Mapper()
+map.connect(None,"error/{action}/{id}",controller="controller_obj") #定义匹配规则
+result = map.match('error/myapp/4')  #匹配url='error/myapp/4'
+#result 匹配结果
+{'action': u'myapp', 'controller': u'controller_obj', 'id': u'4'}
+map.connect(None,"/message/:name",controller='my_contro')  #除 {} 外，：也可以作为匹配符号
+result = map.match('/message/12')
+#result 匹配结果
+{'controller': u'my_contro', 'name': u'12'}
+
+
+2.route.middleware以及Mapper.resource
+#!/usr/bin/env/python
+#coding=utf-8
+from routes import Mapper
+from routes import middleware
+import webob.dec
+from wsgiref.simple_server import make_server
+
+class controller(object):
+    def __init__(self):
+        self.i = 1
+    def __call__(self):
+        print self.i
+    def search(self):
+        return "do search()"
+    def show(self):
+        return "do show()"
+    def index(self):
+        return "do index()"
+    def update(self):
+        return "do update()"
+    def delete(self):
+        return "do delete()"
+    def create(self):
+        return "do create()"
+    def create_many(self):
+        return "do create_many()"
+    def update_many(self):
+        return "do update_many()"
+    def list_many(self):
+        return "do list_many()"
+    def delete_many(self):
+        return "do delete_many()"
+class appclass(object):
+
+    def __init__(self):
+        a = controller()
+        map = Mapper()
+        """路由匹配条件1"""
+        #map.connect('/images',controller=a,
+        #           action='search',
+        #           conditions={'method':['GET']})
+        """路由匹配条件2"""
+        #map.connect('name',"/{action}/{pid}",controller=a)
+        """路由匹配条件3"""
+        #map.resource("message","messages",controller=a,collection={'search':'GET'})
+        """路由匹配条件4"""
+        #map.resource('message', 'messages',controller=a,
+                        #collection={'list_many':'GET','create_many':'POST'},
+                        #member={'update_many':'POST','delete_many':'POST'})
+        """路由匹配条件5"""
+        map.resource('message', 'messages',controller=a,path_prefix='/{projectid}',
+                    collection={'list_many':'GET','create_many':'POST'},
+                    member={'update_many':'POST','delete_many':'POST'})
+        self.route = middleware.RoutesMiddleware(self.dispatch,map)
+
+    @webob.dec.wsgify
+    def __call__(self,req):
+        return self.route
+
+    @staticmethod
+    @webob.dec.wsgify
+    def dispatch(req):
+        match = req.environ['wsgiorg.routing_args'][1]
+        print "route match result is:",match
+        if not match:
+            return "fake url"
+
+        controller = match['controller']
+        action = match['action']
+        if hasattr(controller,action):
+            func = getattr(controller,action)
+            ret = func()
+            return ret
+        else:
+            return "has no action:%s" %action
+
+
+if __name__=="__main__":
+    app = appclass()
+    server = make_server('',8088,app)
+    server.serve_forever()
+分析：
+
+1)webob.dec.wsgify是webob为WSGI应用程序提供的一个装饰器，作用是将一个函数转换成一个WSGI应用。
+参考资料 http://tumblr.wachang.net/post/38149417931/python-paste-webob-3
+
+2）routes.middleware.RoutesMiddleware,将接受到的url，自动调用map.match()方法，将url进行路由匹配并将结果存入request请求的环境变量['wsgiorg.routing_args']，最后会调用其第一个参数给出的函数接口，即self.dispatch。
+
+参考资料   http://blog.csdn.net/networm3/article/details/8666150
+
+3）map.connect 及map.resource均用来建立路由匹配条件
+
+针对程序中的匹配条件1  
+map.connect('/images',controller=a,action='search',conditions={'method':['GET']})
+curl	路由匹配结果 （程序中的route match result is）	curl请求得到的结果
+curl -X GET http://localhost:8088/images	{'action': u'search', 'controller': <__main__.controller object at 0x10c2b10>}	"do search()"
+匹配条件指定了curl的动作为GET ，访问路径为images  对应的action 为search
+
+
+匹配条件2 
+
+map.connect('name',"/{action}/{pid}",controller=a)
+curl	路由匹配结果 （程序中的route match result is）	curl请求得到的结果
+curl -X GET  http://localhost:8088/show/hihi	{'action': u'show', 'controller': <__main__.controller object at 0x2203b10>, 'pid': u'hihi'}	"do show()"
+curl -X POST  http://localhost:8088/failfunc/test	{'action': u'failfunc', 'controller': <__main__.controller object at 0x2203b10>, 'pid': u'test'}	"has no action:failfunc" 匹配条件没有指定curl的动作，因此所有的动作（PUT，POST，GET，。。）都匹配，第二个curl请求，匹配的action 为failfunc，pid为test，但是程序没有定义failfunc函数，报错
+
+匹配条件3   
+map.resource("message","messages",controller=a)  ,map.resource内部定义了默认的匹配条件
+第一个参数message为 member_name(资源名），第二个参数messages为collection_name（资源集合名），一般定义资源集合名为资源名的复数,我这里随便取名
+collection_name作为访问的路径名，且当没有传入参数controller时，controller=collection_name
+
+
+map.resource("message","messages",controller=a) 等同于以下匹配条件：
+
+map.connect('/messages',controller=a,action='index',conditions={'method':['GET']})
+
+map.connect('/messages',controller=a,action='create',conditions={'method':['POST']})
+
+map.connect('/messages/{id}',controller=a,action='show',conditions={'method':['GET']})
+
+map.connect('/messages/{id}',controller=a,action='update',conditions={'method':['PUT']})
+
+map.connect('/messages/{id}',controller=a,action='delete',conditions={'method':['DELETE']})
+
+前两条是针对整个资源集合的操作，后三条是针对资源集合中某个固定资源的操作
+
+
+curl	路由匹配结果 （程序中的route match result is）	curl请求得到的结果
+curl -X POST http://localhost:8088/messages	{'action': u'create', 'controller': <__main__.controller object at 0x1dbbb10>}	"do create()"
+curl -X GET  http://localhost:8088/messages	{'action': u'index', 'controller': <__main__.controller object at 0x1dbbb10>}	"do index()"
+curl -X GET  http://localhost:8088/messages/12	{'action': u'show', 'controller': <__main__.controller object at 0x1dbbb10>, 'id': u'12'}	"do show()"
+curl -X PUT  http://localhost:8088/messages/12	{'action': u'update', 'controller': <__main__.controller object at 0x1dbbb10>, 'id': u'12'}	"do update()"
+curl -X DELETE  http://localhost:8088/messages/12	{'action': u'delete', 'controller': <__main__.controller object at 0x1dbbb10>, 'id': u'12'}	"do delete()" 这里匹配结果中的id为某个具体资源id，这里乱取，后三条curl针对具体资源（id为12）的操作，前两条是针对整个资源集合的操作
+当url传入的id包含'.',会将'.'后的字符窜匹配为format,如输入的id 为 '12.hihi' ,匹配id='12', format='hihi'
+
+
+匹配条件4
+
+map.resource('message', 'messages',controller=a,
+                        collection={'search':'GET','create_many':'POST'},
+                        member={'update_many':'POST','delete_many':'POST'})
+map.resource除了默认的路由条件外，还可以额外的定义‘资源集合的方法’以及‘单个资源的方法’
+collection={'search':'GET','create_many':'POST'}       定义了资源集合方法 search，其curl动作为GET,create_many,其curl动作为POST
+
+member={'update_many':'POST','delete_many':'POST'}    定义了单个资源方法 update_many,其curl动作为POST，delete_many,其curl动作为POST
+
+curl	路由匹配结果 （程序中的route match result is）	curl请求得到的结果
+curl -X GET  http://localhost:8088/messages/search	{'action': u'search', 'controller': <__main__.controller object at 0x253db10>}	do search()
+curl -X POST  http://localhost:8088/messages/create_many	{'action': u'create_many', 'controller': <__main__.controller object at 0x253db10>}	do create_many()
+curl -X POST  http://localhost:8088/messages/1/update_many	{'action': u'update_many', 'controller': <__main__.controller object at 0x253db10>, 'id': u'1'}	do update_many()
+curl -X POST  http://localhost:8088/messages/1/delete_many	{'action': u'delete_many', 'controller': <__main__.controller object at 0x253db10>, 'id': u'1'}	do delete_many()
+匹配条件5 
+
+map.resource('message', 'messages',controller=a,path_prefix='/{projectid}',
+                    collection={'list_many':'GET','create_many':'POST'},
+                    member={'update_many':'POST','delete_many':'POST'})
+map.resource初始化时还可以指定curl访问路径的前缀路径，如匹配条件3及4没有指定时，默认为collection_name（资源集合名）
+
+指定path_prefix后，路径为path_prefix/collection_name
+
+curl	路由匹配结果 （程序中的route match result is）	curl请求得到的结果
+curl -X POST  http://localhost:8088/proj1/messages	{'action': u'create', 'projectid': u'proj1', 'controller': <__main__.controller object at 0x1375b10>}	do create()
+curl -X GET  http://localhost:8088/proj1/messages/list_many	{'action': u'list_many', 'projectid': u'proj1', 'controller': <__main__.controller object at 0x1375b10>}	do list_many()
+curl -X POST  http://localhost:8088/proj1/messages/member_3/update_many	{'action': u'update_many', 'projectid': u'proj1', 'controller': <__main__.controller object at 0x1375b10>, 'id': u'member_3'}	do update_many()
+
+在路由5的条件下，添加一条
+
+map.resource('type', 'types',controller=other_controller,
+                           parent_resource=dict(member_name='message',
+
+                                                                    collection_name='messages'),
+
+                           path_prefix = '{projectid}/%s/:%s_id' %('nex','nexs'))
+
+
+curl -X POST  http://localhost:8088/proj1/nex/17/types
+
+匹配nexs_id 为17，controller 为other_controller,  parent_resource的作用为形成name_prefix = 'message_',具体作用不详，有待研究
+
+
+参考资料：http://routes.readthedocs.org/en/latest/restful.html
