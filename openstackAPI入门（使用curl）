@@ -1,0 +1,66 @@
+要认证对 OpenStack 服务的访问，您首先需要向 OpenStack 认证服务发出认证请求以获得认证令牌。您必须提供有效的证书才能够请求认证令牌。
+
+证书通常是您的用户名和密码的组合，或者是您的云环境中的租户的名称或者 ID。
+联系您的云管理员得到您的用户名、密码以及租户等信息以便于生成认证令牌。作为另外一种选择，您可以提供令牌而不是每次都要提供用户名和密码。
+
+发送 API 请求时，您需要将令牌信息置于 HTTP 的 X-Auth-Token 头。当需要访问多个服务时，您需要为每个服务获取一个令牌。
+令牌只在一个有限的时间内是有效的，超时即无效。令牌也可能因为其他原因而变得无效。
+例如，如果用户的角色发生了变化，该用户当前存在的令牌也会变得无效。
+
+
+认证与 API 请求工作流
+
+从云管理员提供的认证服务接入点请求一个认证令牌。在发送的请求中包含一个有效的证书：
+
+参数	类型	描述
+username (必需)	xsd:string	用户名。如果您不提供用户名和密码，那么必须提供令牌。
+password (必需)	xsd:string	该用户的密码。
+tenantName (可选)	xsd:string	租户名称。租户 Id 和 租户名称 都是可选的，但不能被同时使用。如果这两个属性值都被指定了，服务将会返回 400错误请求。
+tenantId (可选)	capi:UUID	租户的 ID。租户 Id 和 租户名称 都是可选的，但不能被同时使用。如果这两个属性值都被指定了，服务将会返回 400错误请求。如果您不知道 tenantId，您可以发送一个以 "" 作为 tenantId 的请求并在返回中得到该 ID。
+token (可选)	capi:UUID	令牌。假如您不提供令牌，则必须提供用户名和密码。
+在请求成功的情况下，服务器将会返回一个认证令牌。
+
+将令牌置于 HTTP 的 X-Auth-Token 头部发送 API 请求。继续使用该令牌发送 API 请求直到工作完成或者 服务器返回 401Unauthorized。
+
+当 401Unauthorized 错误出现时，请申请一个新的令牌。
+
+The examples in this section use cURL commands. For information about cURL, see http://curl.haxx.se/. For information about the OpenStack APIs, see OpenStack API Reference.
+
+
+
+ 认证
+
+在一个运行着认证服务的典型 OpenStack 环境中，使用如下的 cURL 命令来获取令牌：
+
+$ curl -s -X POST http://8.21.28.222:5000/v2.0/tokens \
+            -H "Content-Type: application/json" \
+            -d '{"auth": {"tenantName": "'"$OS_TENANT_NAME"'", "passwordCredentials":
+            {"username": "'"$OS_USERNAME"'", "password": "'"$OS_PASSWORD"'"}}}' \
+            | python -m json.tool
+            
+  注意OS_USERNAME 和 OS_PASSWORD OS_TENANT_NAME需要系统管理员给， devstack下面的openrc会有一个默认的 source openrc的时候会直接export到系统变量中      
+  返回结果中搜索 tokens
+  返回结果中还有各组件的URL
+  
+  
+  注意
+假如您不知道您的租户名称或者 ID，您可以使用空 tenantName 发送认证请求，如下所示：
+
+$ curl -s -X POST http://8.21.28.222:5000/v2.0/tokens \
+                -H "Content-Type: application/json" \
+                -d '{"auth": {"tenantName": "", "passwordCredentials":
+                {"username": "'"$OS_USERNAME"'", "password": "'"$OS_PASSWORD"'"}}}' \
+                | python -m json.tool
+                
+                
+发送API请求
+获取了token之后就可以根据获取的URL和TOKEN使用相应的接口
+
+所有的计算接口http://developer.openstack.org/api-ref-compute-v2.html
+
+查询云主机类型
+$ curl -s -H \
+            "X-Auth-Token:令牌" \
+            http://8.21.28.222:8774/v2/租户 id/flavors \
+            | python -m json.tool
+            
