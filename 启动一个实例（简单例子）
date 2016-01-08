@@ -1,0 +1,24 @@
+1 启动虚拟机实例前，需要为其选择名称，镜像和云主机类型。
+
+通过 nova 客户端调用相关的计算服务 API 以列出所有可用的镜像，如下所示：
+
+$ nova image-list
+
+运行如下命令以列出云主机类型：
+
+$ nova flavor-list
+
+启动虚拟机实例前，记录下您所需的镜像和云主机类型的 ID。
+
+使用之前记录下来的镜像和云主机类型的 ID 以及虚拟机名称运行 nova boot 命令，启动一个名为 my_instance 的虚拟机，如下所示：
+
+$ nova boot --image 949c80c8-b4ac-4315-844e-69f9bef39ed1 --flavor 2 my_instance
+
+
+使用 nova list 查看虚拟机：
+
+$ nova list
+
+使用 nova show 命令，可以查看指定虚拟机的具体信息。包括虚拟机的 ID：
+
+$ nova show 66129319-1f1d-420d-a226-bf9fc5ea0138
