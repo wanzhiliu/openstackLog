@@ -1,0 +1,135 @@
+Nova挂载cinder卷流程分析
+    1. nova通过命令nova volume-attach server volume device-name或者http请求
+ Req：POST /v2/{tenant-id}/servers/{server-id}/os-volume_attachments' 
+ Body：{'volumeAttachment': {'device': '/dev/vdb',
+        'volumeId': '951be889-b794-4723-9ac9-efde61cacf3a'}}'
+发起卷挂载请求。
+
+  2. nova获取可用的挂载点，若指定了挂载点则验证其有效性，没有则找出一个有效的挂载点，同时创建数据库信息，在block_device_mapping表写入一条如下信息：
+　　　*************************** 1. row ***************************
+           created_at: 2014-07-07 06:24:12
+           updated_at: NULL
+           id: 6
+           device_name: /dev/vdb
+           volume_id: b5ce6d0f-e7db-41cb-a5f1-5c47454248c1
+           volume_size: NULL
+           connection_info: NULL
+           instance_uuid:9de3d836-be91-4348-9fc1-b67d8623157f             
+       source_type: volume
+           destination_type: volume
+           
+           
+3. nova向cinder发送请求，获取卷信息,请求和回复如下所示：
+    Req: GET /v1/{tenant-id}/volumes/{volume-id}
+        Header：-H "X-Auth-Token: 8138b1ace73b4e359122be531c55d2dd"
+    Res: 
+    {
+      "volume": {
+            "status": "available",
+            "display_name": "dfg",
+　　        "attachments": [],
+　　        "availability_zone": "nova",
+　　        "bootable": "false",
+　　        "encrypted": false,
+　　        "created_at": "2014-06-30T08:33:47.000000",
+　　        "os-vol-tenant-attr:tenant_id":  "xxx-tenant-id",
+　　        "display_description": null,
+　　        "os-vol-host-attr:host": "xfolsom",
+　　        "volume_type": "None",
+　　        "snapshot_id": null,
+　　        "source_volid": null,
+　　        "os-vol-mig-status-attr:name_id": null,
+　　        "metadata": {
+　　            "readonly": "False"
+　　        },
+　　        "id": "951be889-b794-4723-9ac9-efde61cacf3a",
+　　        "os-vol-mig-status-attr:migstat": null,
+　　        "size": 1
+　　       }
+        }
+        
+        
+4.nova检查卷的状态，若volume['status']!='available'，抛出400异常，异常信息为：status must be 'available'，一个典型的错误信息如下：
+ERROR (BadRequest): Invalid volume: status must be 'available' (HTTP 400)
+　　　若volume['status']=='attached'，抛出ERROR (BadRequest): Invalid volume: already attached (HTTP 400)
+　　　
+ 5. 向cinder发送请求，保留这个盘，避免被别人使用，请求和回复如下：
+    Req：POST  v1/{tenant-id}/volumes/{volume-id}/action
+　　　     Header：-H "X-Auth-Token: 8138b1ace73b4e359122be531c55d2dd"
+　　　     Body：{"os-reserve": null}
+　　　Res：Http 202
+  Cinder收到请求后，若volume['status']=='available'，则将状态改为volume['status']==‘attaching’，否则抛出400异常。
+  
+   6. nova获取connector，得到connector信息如下所示：
+　　　{'ip': '10.160.162.24', 'host': 'nvs-1', 'initiator': 'iqn.1993-08.org.debian:01:35725f2f2a'}
+　　　其中initiator为/etc/iscsi/initiatorname.iscsi文件内容。
+
+
+7. 将上一步得到的connector和volume-id发送给cinder，初始化连接接口，获取iscsi的connection_info，cinder返回connection_info，其请求和回复信息如下所示：
+    Req：POST  v1/{tenant-id}/volumes/{volume-id}/action
+　　　     Header：-H "X-Auth-Token: 8138b1ace73b4e359122be531c55d2dd"
+　　　     Body:
+　　　     {
+　　　      "os-initialize_connection": {
+　　　        "connector": {
+　　　            "ip": "10.160.161.32",
+　　　            "host": "xfolsom",
+　　　            "initiator": "iqn.1993-08.org.debian:01:11a1a0aa28f1"
+　　　        }
+　　　       }
+        }
+    Res：
+        {u'data': {u'access_mode': u'rw',
+         u'auth_method': u'CHAP',
+         u'auth_password': u'jVu68HfYhUBtAQ5vQGpq',
+         u'auth_username': u'pg9Zc8o7JiCpjf6LHh9C',
+         u'encrypted': False,
+         u'qos_specs': None,
+         u'target_discovered': False,
+         u'target_iqn':      u'iqn.2010-10.org.openstack:volume-b5ce6d0f-a5f1-5c47454248c1',
+         u'target_lun': 1,
+         u'target_portal': u'10.160.162.24:3260',
+         u'volume_id': u'b5ce6d0f-e7db-41cb-a5f1-5c47454248c1'},
+         u'driver_volume_type': u'iscsi'}
+  
+  8. 若第6、7步有异常(不区分异常种类，所有异常都一样)，则给cinder发送unreserve请求，修改卷的状态，请求和回复如下：
+    Req：POST  v1/{tenant-id}/volumes/{volume-id}/action
+　　　     Header：-H "X-Auth-Token: 8138b1ace73b4e359122be531c55d2dd"
+　　　     Body：{"os-unreserve": null}
+　　　Res：Http 202
+　　　Cinder这边做如下处理：若volume['status'] == "attaching"，则将其状态改为‘available’，同时nova这边会删除block_device_mapping表对应的数据库行，终止卷挂载行为。
+　　　
+ 9. nova调用驱动挂载卷到宿主机上，nova默认是调用LibvirtISCSIVolumeDriver驱动的connect_volume方法， 该方法用libvirt执行一些相关的iscsi命令挂载云硬盘到宿主机上，然后调用libvirt将该卷挂载到虚拟机上去，若在挂载卷到虚拟机过程中出现异常，则将前面卷挂载到宿主机这一步操作撤销，执行的是LibvirtISCSIVolumeDriver驱动的disconnect_volume方法。至此，挂载过程完成。
+
+
+ 10. 给cinder发送请求挂载信息，通知cinder此卷已经完成宿主机虚拟机挂载过程:
+　　　Req：POST  v1/{tenant-id}/volumes/{volume-id}/action
+　　　Header：-H "X-Auth-Token: 8138b1ace73b4e359122be531c55d2dd"
+　　　Body：
+　　　     {
+　　　        "os-attach": {
+　　　        "instance_uuid": "5f1c49d6-f3ec-4564-9b9a-f6b3dc938dd2",
+　　　        "mountpoint": "/dev/vdb",
+　　　        "mode": "rw"
+　　　           }
+　　　      }
+　　　Res：Http 202
+　　　Cinder收到请求后，进行挂载。从cinder的代码上看，并未做什么操作，只是将信息更新到数据库而已，将卷的状态改为in-use。
+　　　
+ 11. nova更新数据库，主要把connection_info信息更新进去。更新后的数据库如下所示：
+　　　*************************** 1. row ***************************
+           created_at: 2014-07-07 06:24:12
+           updated_at: 2014-07-07 07:03:28
+           deleted_at: NULL
+                   id: 6
+          device_name: /dev/vdb
+          delete_on_termination: 0
+          snapshot_id: NULL
+          volume_id: b5ce6d0f-e7db-41cb-a5f1-5c47454248c1
+          volume_size: NULL
+          no_device: NULL
+      connection_info: {"driver_volume_type": "iscsi", "serial": "b5ce6d0f-e7db-41cb-a5f1-5c47454248c1", "data": {"access_mode": "rw", "target_discovered": false, "encrypted": false, "qos_specs": null, "target_iqn": "iqn.2010-10.org.openstack:volume-b5ce6d0f-e7db-41cb-a5f1-5c47454248c1", "target_portal": "10.160.162.24:3260", "volume_id": "b5ce6d0f-e7db-41cb-a5f1-5c47454248c1", "target_lun": 1, "device_path": "/dev/disk/by-path/ip-10.160.162.24:3260-iscsi-iqn.2010-10.org.openstack:volume-b5ce6d0f-e7db-41cb-a5f1-5c47454248c1-lun-1", "auth_password": "jVu68HfYhUBtAQ5vQGpq", "auth_username": "pg9Zc8o7JiCpjf6LHh9C", "auth_method": "CHAP"}}
+        instance_uuid: 9de3d836-be91-4348-9fc1-b67d8623157f
+              deleted: 0
+          source_type: volume
+     destination_type: volume
