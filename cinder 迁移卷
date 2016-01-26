@@ -5,3 +5,20 @@
     1.2 如果是不同存储上的backend之间的volume迁移，或者存储cinder driver不支持同一个存储上backend之间的迁移，那么将使用cinder默认的迁移操作：Cinder首先创建一个新的volume，然后从源volume拷贝数据到新volume，然后将老的volume删除。
 2. 如果volume已经被attach到虚机，Cinder创建一个新的volume，调用Nova去将数据从源volume拷贝到新volume，然后将老的volume删除。目前只支持Compute libvirt driver.
  
+ 
+ 卷迁移命令
+ 
+[code][root@controller ~(keystone_admin)]# cinder help migrate
+usage: cinder migrate [--force-host-copy <True|False>] <volume> <host>
+
+Migrate the volume to the new host.
+
+Positional arguments:
+  <volume>              ID of the volume to migrate
+  <host>                Destination host
+
+Optional arguments:
+  --force-host-copy <True|False>
+                        Optional flag to force the use of the generic host-
+                        based migration mechanism, bypassing driver
+                        optimizations (Default=False).
