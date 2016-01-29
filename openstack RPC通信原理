@@ -9,3 +9,15 @@ Exchange:根据routing key转发消息到对应的Mesage Queue中
 Routing key:用于判断哪些消息需要发送到对应的Message Queue
 publisher: 消息发送者
 Consumer:消息接受者，
+
+
+
+
+AMQP 定义了三种类型的Exchange ，不同的Exchange 实现不同的routing算法
+Direct Exchange：Point-to-Point 消息模式，消息点对点的通信模式，Direct Exchange 根据 Routing Key 进行精确匹配，
+        只有对应的 Message Queue 会接受到消息
+Topic Exchange：Publish-Subscribe(Pub-sub)消息模式，Topic Exchange 根据 Routing Key 进行模式匹配，
+          只要符合模式匹配的 Message Queue 都会收到消息
+Fanout Exchange：广播消息模式，Fanout Exchange 将消息转发到所有绑定的 Message Queue
+OpenStack 目前支持的基于 AMQP 模型的 RPC backend 有 RabbitMQ、QPid、ZeroMQ，对应的具体实现模块在 cinder 
+          项目下 Openstack/common/RPC/目录下，impl_*.py 分别为对应的不同 backend 的实现。
