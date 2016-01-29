@@ -1,1 +1,11 @@
+openstack各组件直接通过REST接口进行相互通信，各组件内部采用基于amqp(advanced message queuing protocl)模型的RPC通信。
 
+cinder分为cinder-api cinder-scheduler cinder-volume
+cinder -api 是cinde 服务的endpoint, 提供rest接口，负责处理client请求，并将RPC(remote producer call远程过程调用)请求发送至scheduler
+cinder-volume负责具体的volume请求处理，由不同的后端存储提供volume存储空间
+
+openstack组件内部的RPC机制的实现是基于AMQP作为通讯模型。AMQP是基于异步消息通讯的中间件协议，AMQP模型有四个重要角色。
+Exchange:根据routing key转发消息到对应的Mesage Queue中
+Routing key:用于判断哪些消息需要发送到对应的Message Queue
+publisher: 消息发送者
+Consumer:消息接受者，
