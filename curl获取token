@@ -1,1 +1,43 @@
 
+1 通过curl命令获取token
+curl -s -X POST http://186.100.8.118:5000/v2.0/tokens -H "Content-Type: application/json" /
+-d '{"auth": {"tenantName": "'"$OS_TENANT_NAME"'", "passwordCredentials":{"username": "'"$OS_USERNAME"'", "password": "'"$OS_PASSWORD"'"}}}'
+/| python -m json.tool
+
+这个里面的OS_TENANT_NAME OS_PASSWORD OS_PASSWORD是执行openrc然后生成的环境变量
+可以通过echo $OS_PASSWORD查看
+输出中查找相关token 
+"token": {
+            "audit_ids": [
+                "D5UxptT6RO28kwb6fECXkg"
+            ],
+            "expires": "2016-01-29T09:12:25Z",
+            "id": "ea8c5fde555b4c8cb2969b24db97e2b4",
+            "issued_at": "2016-01-29T08:12:25.067834",
+            "tenant": {
+                "description": "",
+                "enabled": true,
+                "id": "cfa306e2615a46b795d0c71d08d23333",
+                "name": "demo"
+            }
+        },
+2 使用--debug查看解析
+可以通过cinder --debug xxx看到发送的具体的RESTful API
+
+这里发了三条curl命令：
+
+（1）curl -g -i -X GET http://192.168.15.180:5000/v2.0/ -H "Accept: application/json" -H "User-Agent: python-keystoneclient"
+
+（2）curl -g -i -X GET http://192.168.15.180:8776/ -H "Accept: application/json" -H "User-Agent: python-keystoneclient"
+
+（3）curl -g -i -X GET http://192.168.15.180:8776/v1/5f8211463783496b9621c51d5666e70e/volumes/detail -H "User-Agent: python-cinderclient" 
+-H "Accept: application/json" -H "X-Auth-Token: {SHA1}58e60a153a105abbc64cd8f28ef8de8f227660fc"
+
+解释：前面两条命令不用管，实际发的是第三条命令。如果自己写API不掉上面两个，实际上也会发上面的两个命令。
+
+实际上List的API只有这一个 ,查看X-Auth-Token值
+
+curl -g -i -X GET http://192.168.15.180:8776/v1/5f8211463783496b9621c51d5666e70e/volumes/detail -H "User-Agent: python-cinderclient"
+-H "Accept: application/json" -H "X-Auth-Token: {SHA1}58e60a153a105abbc64cd8f28ef8de8f227660fc"
+        
+
