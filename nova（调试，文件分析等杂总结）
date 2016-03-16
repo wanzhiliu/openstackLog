@@ -24,3 +24,88 @@ nova --debug flavor-create myflavor 6 256 2 1
 nova --debug boot --image 42a634e0-db5e-403f-9489-e11ed900913e --flavor 6 --nic net-id=cd759e47-5467-47db-b08d-5f157977dff4 myTestVm
 再通过“nova --debug get-vnc-console myTestVm novnc”可以获取到一个登录到虚拟机内部的url连接。
   该url是用html5实现的，它对浏览器的客户端有要求。通过firefox或者谷歌浏览器访问该连接，就可以登录到虚拟机的内部。
+  
+  
+  
+  openstack中,服务内组件的调用是通过rpc完成的，服务间的调用时通过client方式完成的
+  
+  
+nova代码调试
+（1）以调试的方式重启Nova的4个核心服务
+看代码最方便的就是在debug模式下，一行行看代码怎么运行的。所以这里需要先进入python的调试模式。步骤如下：
+  <1> 停止nova的4个核心进程
+      service openstack-nova-api stop
+      service openstack-nova-compute stop
+      service openstack-nova-conductor stop
+      service openstack-nova-scheduler stop
+  <2> 以debug方式重启nova的4个核心进程
+  
+     <2.1> 启动nova-api服务，并在create函数打断点。
+          先查看/opt/stack/nova/nova/api/openstack/compute/servers.py 中 def create位于第几行。在我的环境中位于767行。
+         先进入debug模式
+         python -m pdb /usr/local/bin/nova-api --config-file /etc/nova/nova.conf
+         然后打断点（需要打到函数体部分，所以是767+2＝769）
+         b /opt/stack/nova/nova/api/openstack/compute/servers.py:769
+         之后启动进程
+          r
+        这样nova-api就以debug模式启动了。
+        
+  创建虚拟机的函数调用关系：
+  [nova-api]
+   nova/api/openstack/compute/servers.py: create （创建虚拟机）
+    nova/compute/api.py: create
+        nova/compute/api.py: _create_instance
+            nova/compute/api.py: _validate_and_build_base_options （验证基本输入参数，并拷贝flavor信息）
+            nova/compute/api.py: _check_and_transform_bdm （检查块设备）
+            nova/compute/api.py: _provision_instances （查看配额quota是否满足）
+            nova/compute/api.py: _build_filter_properties （获取主机过滤条件）
+            nova/compute/api.py: _record_action_start （更新数据库，记录创建开始信息）
+            nova/conductor/api.py: build_instances （使用rpc调用 nova-conductor的manager的同名函数）
+                nova/conductor/rpcapi.py: build_instances
+[nova-conductor]
+nova/conductor/manager.py: build_instances
+    build_request_spec
+    nova/scheduler/rpcapi.py:run_instance
+[nova-scheduler]
+  nova/scheduler/manager.py:run_instance
+  
+  
+  <3> nova-compute调用libvirt接口创建虚拟机
+nova-compute是真正拿用户输入的参数创建虚拟机的组件。它之后的代码流程如下：
+[nova-compute]
+nova/compute/manager.py:run_instance
+    nova/compute/manager.py:_run_instance
+        nova/compute/manager.py:_prebuild_instance
+            nova/compute/manager.py:_get_image_meta （通过glance client的接口，获取具体的镜像文件）
+            nova/image/glance.py: get_remote_image_service
+        nova/compute/manager.py:_build_instance
+            nova/virt/libvirt/driver.py:get_available_nodes
+            nova/virt/libvirt/driver.py:dhcp_options_for_instance
+            nova/compute/manager.py:_allocate_network (通过neutron client的接口，为虚拟机分配网卡)
+            nova/network/neutronv2/api.py:allocate_for_instance
+            nova/compute/manager.py:_prep_block_device （为虚拟机分配块设备）
+            nova/compute/manager.py:_spawn
+                nova/virt/libvirt/driver.py:spawn （真正创建虚拟机）
+                    nova/virt/libvirt/driver.py:_create_image
+                    nova/virt/libvirt/driver.py:to_xml
+                    nova/virt/libvirt/driver.py:_create_domain_and_network
+                    nova/virt/libvirt/driver.py: _create_domain
+                    nova/virt/libvirt/driver.py:_wait_for_boot
+
+  
+
+  
+  
+
+
+  
+  
+  
+  
+  
+  
+  
+  
+
+
+
