@@ -91,8 +91,49 @@ nova/compute/manager.py:run_instance
                     nova/virt/libvirt/driver.py:_create_domain_and_network
                     nova/virt/libvirt/driver.py: _create_domain
                     nova/virt/libvirt/driver.py:_wait_for_boot
+                    
+4使用调用栈
+当你确定某个问题一定会调用某个函数，但是不知道谁会调用它。这个时候，可以在你确定会调用的函数里面将调用栈输出到日志里面。具体做法如下：
+import inspect
+stackinfo = str(inspect.stack()).replace("(<frame", "\n(<frame") 
+LOG.debug("---------\n" + stackinfo)
+当你要看一段新的代码，而你有不确定它是怎么调用各个子函数的时候；或者当你要定位一个并非调用的问题的时候，这个方法非常有用。
 
-  
+
+5 迁移虚拟机
+  迁移指的是在Host间用冷迁移或热迁移的方式，移动虚拟机。移动虚拟机会涉及到镜像文件的拷贝，所以需要在两个Host之间，配置一下互信，
+  以避免拷贝文件失败。
+  设置互信方法如下：
+     cd /root
+     ssh-keygen -t rsa  (连续三次回车,即在本地生成了公钥和私钥,不设置密码)
+     touch /root/.ssh/authorized_keys
+     cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
+     scp -r .ssh root@10.175.28.135:/root
+这样就可以设置本机和10.175.28.135之间ssh是免登录的。如果要设置多台机器，那么就用scp拷贝文件夹到多台不同的机器。
+因为迁移的目的节点是使用机器名来描述的，所以还需要配置对机器名的解析。这有2种办法，第一种是使用DNS服务器，
+第二种是直接在 /etc/hosts 中配置各个节点的“机器名”和“IP”，如下：
+127.0.0.1       localhost openstack
+10.175.28.133   openstack
+10.175.28.135   openstack2
+10.175.28.136   openstack3
+现在就可以操作进行迁移了。操作可以直接使用REST API来完成，也可以使用nova client的命令行封装curl发送REST消息来完成。
+这里使用nova client来操作。
+
+冷迁移过程中，如果一直ping虚拟机，会发现ping在某个时间段内会断开。冷迁移实际上分为2步：
+第一步在新的host上创建一个同样规格的虚拟机，此时旧的host上原虚拟机还保留着。
+第二步是要操作人员手动确认是否迁移，可以确认迁移，也可以回滚。用nova命令表示的迁移步骤如下：
+nova --debug migration f49d3d39-b3f1-43de-bafb-70da5c34426a 
+等待1分钟
+nova list
+等待1分钟
+nova --debug resize-confirm f49d3d39-b3f1-43de-bafb-70da5c34426a
+热迁移需要指定迁移的目的节点。热迁移的过程中，ping虚拟机是不会断开的。
+nova --debug live-migration --block-migrate f49d3d39-b3f1-43de-bafb-70da5c34426a newhost
+
+
+
+
+
 
   
   
