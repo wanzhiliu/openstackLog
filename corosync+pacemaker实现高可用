@@ -3,3 +3,10 @@ corosync用于心跳检测，pacemaker用户也资源转移，两个结合起来
 当检测出服务器挂掉之后，就要对服务资源进行转移。
 CoroSync是运行于心跳曾的开源软件。
 PaceMaker是运行于资源转移层的开源软件。
+
+
+corosync是用于高可用环境中的提供通讯服务的，它位于高可用集群架构中的底层(Message Layer)，扮演着为各节点(node)之间提供心跳信息传递这样的一个角色，多台机器之间通过组播的方式监测心跳。
+pacemaker是一个开源的高可用资源管理器(CRM)，它不能提供底层心跳信息传递的功能，它要想与对方节点通信需要借助底层的心跳传递服务，将信息通告给对方。
+它与corosync的结合方式有两种：1.pacemaker作为corosync的插件运行;2.pacemaker作为独立的守护进程运行;
+资源存在三个方面，1.资源位置，2.资源排序，3.资源顺序
+corosync+pacemaker可实现多种集群模型，包括 Active/Active, Active/Passive, N+1, N+M, N-to-1 and N-to-N。
