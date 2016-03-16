@@ -1,0 +1,26 @@
+1 创建命令
+  1创建新的工程
+    keystone --debug tenant-create --name mytest --enabled true
+  1创建新用户
+    keystone --debug user-create --name myuser --pass Galax8800
+  2让新用户在新工程中具有特定权限
+  keystone --debug user-role-add --user myuser --role Member --tenant mytest （赋一般权限）
+   keystone --debug user-role-add --user myuser --role admin --tenant mytest（赋管理员权限）
+   
+2 novarc 文件内容
+   export OS_USERNAME=myuser
+   export OS_PASSWORD=Galax8800
+   export OS_TENANT_NAME=mytest
+   export OS_AUTH_URL="http://10.175.28.133:5000/v2.0/"
+
+glance 和网络相关命令
+  glance --debug image-create --name myImage --disk-format qcow2 --container-format bare --file /home/cirros-0.3.1-x86_64-disk.img
+创建网络和子网的命令如下：
+neutron net-create new-net
+neutron subnet-create new-net 10.10.10.0/24
+创建规格
+nova --debug flavor-create myflavor 6 256 2 1
+创建虚拟机
+nova --debug boot --image 42a634e0-db5e-403f-9489-e11ed900913e --flavor 6 --nic net-id=cd759e47-5467-47db-b08d-5f157977dff4 myTestVm
+再通过“nova --debug get-vnc-console myTestVm novnc”可以获取到一个登录到虚拟机内部的url连接。
+  该url是用html5实现的，它对浏览器的客户端有要求。通过firefox或者谷歌浏览器访问该连接，就可以登录到虚拟机的内部。
