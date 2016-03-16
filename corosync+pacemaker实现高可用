@@ -10,3 +10,7 @@ pacemaker是一个开源的高可用资源管理器(CRM)，它不能提供底层
 它与corosync的结合方式有两种：1.pacemaker作为corosync的插件运行;2.pacemaker作为独立的守护进程运行;
 资源存在三个方面，1.资源位置，2.资源排序，3.资源顺序
 corosync+pacemaker可实现多种集群模型，包括 Active/Active, Active/Passive, N+1, N+M, N-to-1 and N-to-N。
+
+
+链接
+http://f.dataguru.cn/thread-527749-1-1.html
