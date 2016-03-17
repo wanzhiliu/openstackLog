@@ -1,0 +1,24 @@
+1.OpenStack Nova文件和元数据注入
+openstack在创建实例的时候，可以对实例进行文件注入，注入的内容可为：
+key ssh公钥；
+network 网络参数；
+admin_password 注入超级用户 root 的密码；
+metadata 注入元数据meta.js；
+在下一篇博客中将会具体来看相关代码的实现；
+
+首先来看各种文件注入的命令行实现：
+注入ssh密钥
+创建密钥(ssh-keygen)，添加密钥对；
+nova keypair-add --pub_key.ssh/id_rsa.pub mykey
+创建实例的时候注入密钥；
+nova boot --key_name mykey --imageid_of_image --flavor 1 name_of_instance
+注：id_of_image可以通过nova image-list取得；
+注入文件
+假如我要注入.vimrc这个文件到新创建的实例中，可以：
+nova boot --file /root/.vimrc=/root/.vimrc--image id_of_image --flavor 1 name_of_instance
+注：可以注入多个文件（最多5个），只要写多个--file；
+注入元数据
+可以通过--meta给实例中传入键值对，注入后会写在/meta.js文件里，以类似python字典的方式存储在虚拟机的/meta.js文件中；
+nova boot --meta key2=value2 --metakey1=value1 --image id_of_image --flavor 1 name_of_instance
+cat /meta.js
+{＂key2″: “value2″,“key1″: “value1″}
