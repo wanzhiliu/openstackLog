@@ -22,3 +22,46 @@ nova boot --file /root/.vimrc=/root/.vimrc--image id_of_image --flavor 1 name_of
 nova boot --meta key2=value2 --metakey1=value1 --image id_of_image --flavor 1 name_of_instance
 cat /meta.js
 {＂key2″: “value2″,“key1″: “value1″}
+
+
+2.文件注入过程中涉及的镜像挂载方式
+OpenStack grizzly版本中支持的文件注入执行中镜像的挂载方式有两种：loop和nbd。每种方式对应的实现代码位于nova/nova/virt/disk/mount/目录下，文件名分别为：loop.py和nbd.py。这里以在CENTOS系统上的应用操作，来对这两种文件挂载方式进行一个简单的介绍。
+loop方式
+loop方式下，镜像以loopdevice的方式挂载到宿主机的某个设备名下，例如:
+#losetup–find –show centos-6.2-x86_64.raw
+#/dev/loop0
+以上命令表示，centos-6.2-x86_64.raw已经被挂载为设备/dev/loop0，可以通过该loop设备来操作镜像文件。
+之后，通过kpartx命令，找到loop设备上的可用分区，并分别在宿主机上进行挂载。
+注：linux loop device介绍
+在Linux中，有一种特殊的块设备叫loop device,这种loop device设备是通过影射操作系统上的正常的文件而形成的虚拟块设备。因为这种设备的存在，就为我们提供了一种创建一个存在于其他文件中的虚拟文件系统的机制.
+回环设备（ 'loopback device'）允许用户以一个普通磁盘文件虚拟一个块设备。设想一个磁盘设备，对它的所有读写操作都将被重定向到读写 一个名为 disk-image 的普通文件而非操作实际磁盘或分区的轨道和扇区。（当然，disk-image 必须存在于一个实际的磁盘上，而这个磁 盘必须比虚拟的磁盘容量更大。）回环设备允许你这样使用一个普通文件。
+回环设备的使用与其它任何块设备相同。特别是，你可以在这个设备上创建文件系统并像普通的磁盘一样将它挂载在系统中。这样的一个将全部内容保存在一个普通文件中的文件系统，被称为虚拟文件系统（virtual file system）。
+nbd方式
+nbd方式下是通过qemu-nbd命令来实现虚拟机镜像的挂载。
+首先确保nbd内核模块已经加载：
+modprobenbd
+此时在/dev目录下应该可以看到nbd的设备：
+/dev/nbd0 /dev/nbd10 /dev/nbd12 /dev/nbd14 /dev/nbd2 /dev/nbd4/dev/nbd6 /dev/nbd8
+/dev/nbd1/dev/nbd11 /dev/nbd13 /dev/nbd15 /dev/nbd3 /dev/nbd5 /dev/nbd7 /dev/nbd9
+ 
+#qemu-nbd–connect=/dev/nbd2 /root/temp/centos-6.2-x86_64.raw
+#fdisk-l /dev/nbd2
+    Disk/dev/nbd2: 21.5 GB, 21474836480 bytes
+    255heads, 63 sectors/track, 2610 cylinders, total 41943040 sectors
+    Units= sectors of 1 * 512 = 512 bytes
+    Sectorsize (logical/physical): 512 bytes / 512 bytes
+    I/Osize (minimum/optimal): 512 bytes / 512 bytes
+    Diskidentifier: 0x00046def
+
+    DeviceBoot Start End Blocks Id System
+    /dev/nbd2p1* 2048 41943039 20970496 83 Linux
+此时已经可以看到镜像文件的分区了，通过将/dev/nbd2p1设备挂载在宿主机上就可以对镜像中的文件进行操作了。
+注：NBD简介
+NBD(Network Block Device)让你可以将一个远程主机的磁盘空间,当作一个块设备来使用。
+就像一块硬盘一样.使用它,你可以很方便的将另一台服务器的硬盘空间,增加到本地服务器上。
+NBD与NFS有所不同.NFS只是提供一个挂载点供客户端使用,客户端无法改变这个挂载点的分区格式。
+而NBD提供的是一个块设备,客户端可以把这个块设备格式化成各种类型的分区.更便于用户的使用. 
+NBD是一个内核模块,大部分Linux发行版都已包含它。
+在/nova/virt/disk/mount/api.py代码文件中，类Mount定义了标准的挂载操作类，
+在这个类中有两个方法，instance_for_format和instance_for_device，前者实现了通过镜像文件的格式来判断采用哪种挂载方式，
+后者实现了通过设备属性中是否包括“loop”来判断采用哪种挂载方式，具体来看代码：
