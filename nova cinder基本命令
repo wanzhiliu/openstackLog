@@ -1,0 +1,44 @@
+1nova虚拟机基本操作
+创建虚拟机的CLI
+nova boot --availability-zone [AZ名称]:[单板ID] --image [镜像ID或者名称] --flavor [套餐ID或者名称] --nic net-id=[网络ID] [虚拟机的名称]
+查询AZ名称
+nova availability-zone-list
+
+
+启动虚拟机：
+nova start [虚拟机的ID]
+
+停止虚拟机（硬下电）：
+nova stop [虚拟机的ID]
+软下电：
+curl -v -H "X-Auth-Token:$TOKEN_ID" -H "Content-type: application/json" -d'{"os-soft-stop": null}' http://$HA_IP:$NOVA_PORT/v2/$TENANT_ID/servers/$SERVER_ID/action
+
+复位虚拟机：
+软复位：nova reboot [虚拟机的ID]
+硬复位：nova reboot --hard [虚拟机的ID]
+
+获取noVNC的连接：
+nova get-vnc-console [虚拟机ID] novnc
+
+nova host-list //查看主机
+nova hypervisor-show hostid // 查看单板剩余资源
+
+nova show 虚拟机ID 可以查看对应的虚拟机的创建情况，如果失败可以查看失败原因
+
+
+
+
+2 glance
+ 镜像创建
+  glance --insecure image-create --name [镜像名称] --disk-format [镜像类型] --container-format bare --is-public true --property ImageType=Gold --file [镜像文件路径]
+  其中镜像类型常用的有raw、qcow2和iso
+  
+  glance image-list
+  
+  
+3 网络创建
+创建VLAN网络举例：
+neutron net-create [网络名称] --provider:network_type vlan --provider:physical_network physnet1 --provider:segmentation_id [VLAN_ID] --shared
+
+neutron subnet-create --ip-version 4 --gateway [网关] --name [子网名称] --allocation-pool start= [起始IP],end=[结束IP] [网络ID] [网段以及掩码]
+
