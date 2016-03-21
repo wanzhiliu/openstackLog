@@ -1,0 +1,8 @@
+如今nova能够通过命令创建一个server group，在server group中的vm能够指定一些policy。
+这些policy包含affinity和anti-affinity。affinity表示尽量把vm都安排到一个host上面，anti-ffinity表示尽量把vm安排到不同的host上面。
+创建server-group的命令例如以下：
+nova server-group-create group_name anti-afffinity
+
+然后创建vm的时候通过hint指定group名字：
+nova boot --image cirros --flavor m1.small --hint group=group_name
+这样就能把创建的vm放到某个指定的group里面了。
