@@ -132,6 +132,41 @@ nova --debug live-migration --block-migrate f49d3d39-b3f1-43de-bafb-70da5c34426a
 
 
 
+如何使用PDB调试Python(以调试Openstack的libvirtDriver为例子)  
+（1） 硬编码调试
+比方我要调试的是nova/virt/libvirt/driver.py，则再刚开始的地方加入：
+import pdb
+       在需要调试的函数处，加上一句话：
+pdb.set_trace()
+       然后杀掉原来的进程，如nova-compute，手工启动脚本nova-compute
+rm nova/virt/libvirt/driver.pyc
+rm nova/virt/libvirt/driver.pyo
+/usr/bin/nova-compute --config-file=/etc/nova/nova.conf
+#或者为 python /usr/bin/nova-compute --config-file=/etc/nova/nova.conf
+       这样当程序进入pdb.set_trace()所在的行时，则会自动中断等待调试，
+  （2）
+  
+  不用修改代码的调试
+直接调用 –m pdb，就可以进入调试状态，使用方法如下：
+rm nova/virt/libvirt/driver.pyc
+rm nova/virt/libvirt/driver.pyo
+python –m pdb /usr/bin/nova-compute --config-file=/etc/nova/nova.conf
+       会出现如下的界面，在(pdb)的界面中输入断点，然后按c继续，就可以等待最后断在断点处了。
+> /usr/bin/nova-compute(20)<module>()
+-> """Starter script for Nova Compute."""
+(Pdb) b nova/virt/libvirt/driver.py:1504
+Breakpoint 1 at /usr/lib64/python2.6/site-packages/nova/virt/libvirt/driver.py:1504
+(Pdb) c
+       断点如下：
+> /usr/lib64/python2.6/site-packages/nova/virt/libvirt/driver.py(1504)spawn()
+-> disk_info = blockinfo.get_disk_info(CONF.libvirt_type,
+(Pdb) p instance['name']
+u'instance-0000001a'
+(Pdb) p instance
+##该值请见附录
+       注意：不知道为啥断点经常就直接过去了，不会断在我想要的地方，于是我在前面加一个断点，后面加一个断点，一般就会断了，也许是由于行号不对的原因吧。这个大家以后再一起讨论下。
+
+
 
 
 
